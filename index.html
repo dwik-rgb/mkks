@@ -1,0 +1,474 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  onSnapshot, 
+  updateDoc, 
+  increment,
+  query,
+  deleteDoc,
+  addDoc
+} from 'firebase/firestore';
+import { 
+  getAuth, 
+  signInAnonymously, 
+  onAuthStateChanged,
+  signInWithCustomToken
+} from 'firebase/auth';
+import { 
+  Vote, 
+  LogOut, 
+  CheckCircle2, 
+  AlertCircle, 
+  Settings, 
+  Plus, 
+  Trash2, 
+  Edit, 
+  Users, 
+  X,
+  Upload,
+  Key,
+  UserPlus,
+  Lock
+} from 'lucide-react';
+
+// --- Konfigurasi & Inisialisasi Firebase ---
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'evoting-secure-app';
+
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState('landing'); 
+  const [role, setRole] = useState('user'); 
+  const [currentUserProfile, setCurrentUserProfile] = useState(null);
+  const [candidates, setCandidates] = useState([]);
+  const [registeredVoters, setRegisteredVoters] = useState([]);
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [error, setError] = useState('');
+  
+  // State untuk Modal Kandidat
+  const [isCandModalOpen, setIsCandModalOpen] = useState(false);
+  const [editingCandidate, setEditingCandidate] = useState(null);
+  const [candForm, setCandForm] = useState({ nama: '', foto: '' });
+  
+  // State untuk Modal Pemilih (Voter)
+  const [isVoterModalOpen, setIsVoterModalOpen] = useState(false);
+  const [editingVoter, setEditingVoter] = useState(null);
+  const [voterForm, setVoterForm] = useState({ username: '', password: '' });
+  
+  const [fileError, setFileError] = useState('');
+
+  // 1. Inisialisasi Autentikasi
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth error:", err);
+      }
+    };
+    initAuth();
+
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setIsAuthReady(true);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Monitoring Data Kandidat
+  useEffect(() => {
+    if (!user || !isAuthReady) return;
+    const candRef = collection(db, 'artifacts', appId, 'public', 'data', 'candidates');
+    const unsubscribe = onSnapshot(candRef, (snapshot) => {
+      setCandidates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => console.error(err));
+    return () => unsubscribe();
+  }, [user, isAuthReady]);
+
+  // 3. Monitoring Daftar Pemilih Terdaftar (Hanya untuk Admin)
+  useEffect(() => {
+    if (!user || !isAuthReady || role !== 'admin') return;
+    const votersRef = collection(db, 'artifacts', appId, 'public', 'data', 'registered_voters');
+    const unsubscribe = onSnapshot(votersRef, (snapshot) => {
+      setRegisteredVoters(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => console.error(err));
+    return () => unsubscribe();
+  }, [user, isAuthReady, role]);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      // Login Admin
+      if (loginForm.username === 'admin' && loginForm.password === 'adminpassword') {
+        setRole('admin');
+        setView('admin_dashboard');
+      } 
+      // Login Pemilih Terdaftar
+      else {
+        const votersRef = collection(db, 'artifacts', appId, 'public', 'data', 'registered_voters');
+        const snapshot = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'registered_voters', loginForm.username));
+        
+        if (snapshot.exists()) {
+          const voterData = snapshot.data();
+          if (voterData.password === loginForm.password) {
+            setRole('user');
+            setCurrentUserProfile(voterData);
+            setView(voterData.hasVoted ? 'results' : 'voting');
+          } else {
+            setError('Password salah.');
+          }
+        } else {
+          setError('Username tidak terdaftar.');
+        }
+      }
+    } catch (err) {
+      setError('Terjadi kesalahan saat login.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    setFileError('');
+    if (file) {
+      if (file.size > 1048576) {
+        setFileError('Ukuran file maksimal adalah 1MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => setCandForm({ ...candForm, foto: reader.result });
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleVote = async (candidateId) => {
+    if (!user || currentUserProfile?.hasVoted) return;
+    try {
+      setLoading(true);
+      const voterId = currentUserProfile.username;
+
+      // Update status pemilih di koleksi terdaftar
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'registered_voters', voterId), {
+        hasVoted: true,
+        votedFor: candidateId,
+        votedAt: new Date().toISOString()
+      });
+
+      // Update jumlah suara kandidat
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'candidates', candidateId), {
+        votes: increment(1)
+      });
+
+      setCurrentUserProfile(prev => ({ ...prev, hasVoted: true }));
+      setView('success');
+    } catch (err) {
+      console.error(err);
+      setError("Gagal mengirim suara.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- CRUD Kandidat ---
+  const saveCandidate = async (e) => {
+    e.preventDefault();
+    if (!candForm.foto) { setFileError('Harap unggah foto.'); return; }
+    try {
+      if (editingCandidate) {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'candidates', editingCandidate.id), candForm);
+      } else {
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'candidates'), { ...candForm, votes: 0 });
+      }
+      setIsCandModalOpen(false);
+      setCandForm({ nama: '', foto: '' });
+    } catch (err) { console.error(err); }
+  };
+
+  // --- CRUD Pemilih (Voter) ---
+  const saveVoter = async (e) => {
+    e.preventDefault();
+    try {
+      // Menggunakan username sebagai ID dokumen agar unik
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'registered_voters', voterForm.username), {
+        ...voterForm,
+        hasVoted: editingVoter ? editingVoter.hasVoted : false,
+        votedFor: editingVoter ? editingVoter.votedFor : null
+      });
+      setIsVoterModalOpen(false);
+      setVoterForm({ username: '', password: '' });
+      setEditingVoter(null);
+    } catch (err) { console.error(err); }
+  };
+
+  const deleteVoter = async (username) => {
+    if (window.confirm(`Hapus pemilih ${username}?`)) {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'registered_voters', username));
+    }
+  };
+
+  const totalVotes = useMemo(() => candidates.reduce((acc, curr) => acc + (curr.votes || 0), 0), [candidates]);
+
+  if (loading && !isAuthReady) return <div className="min-h-screen flex items-center justify-center">Memuat...</div>;
+
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+      {/* Navbar */}
+      <nav className="bg-white border-b sticky top-0 z-50 px-4 h-16 flex items-center justify-between">
+        <div className="flex items-center gap-2 font-bold text-blue-600 text-xl cursor-pointer" onClick={() => setView('landing')}>
+          <Vote size={28} />
+          <span>E-VOTE {role === 'admin' && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded ml-2">ADMIN</span>}</span>
+        </div>
+        {view !== 'landing' && view !== 'login' && (
+          <div className="flex items-center gap-4">
+            {role === 'admin' && <span className="text-sm font-medium text-slate-400">Panel Kontrol</span>}
+            <button onClick={() => { setView('landing'); setRole('user'); setLoginForm({username: '', password: ''}); }} className="text-slate-600 hover:text-red-600 flex items-center gap-2 font-medium">
+              <LogOut size={20} /> <span className="hidden sm:inline">Keluar</span>
+            </button>
+          </div>
+        )}
+      </nav>
+
+      <main className="max-w-5xl mx-auto px-4 py-8">
+        {/* Landing */}
+        {view === 'landing' && (
+          <div className="text-center py-16 space-y-8 animate-in fade-in">
+            <h1 className="text-5xl font-extrabold text-slate-900 tracking-tight">E-Voting <span className="text-blue-600">Terpercaya</span></h1>
+            <p className="text-slate-500 max-w-xl mx-auto text-lg">Hanya pemilih terdaftar yang dapat memberikan suara. Pastikan Anda memiliki akun dari Admin.</p>
+            <div className="flex justify-center gap-4">
+              <button onClick={() => setView('login')} className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold hover:shadow-xl transition-all flex items-center gap-2">Masuk ke Bilik Suara <ChevronRight size={20}/></button>
+              <button onClick={() => setView('results')} className="bg-white border-2 px-8 py-4 rounded-2xl font-bold text-slate-700">Hasil Sementara</button>
+            </div>
+          </div>
+        )}
+
+        {/* Login */}
+        {view === 'login' && (
+          <div className="max-w-md mx-auto bg-white p-8 rounded-3xl shadow-xl border border-slate-100 mt-10">
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4"><Lock size={32}/></div>
+              <h2 className="text-2xl font-bold">Otentikasi Pemilih</h2>
+              <p className="text-slate-400 text-sm">Masukkan kredensial Anda untuk akses</p>
+            </div>
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="relative">
+                <Users className="absolute left-3 top-3.5 text-slate-400" size={18}/>
+                <input required type="text" placeholder="Username" className="w-full pl-10 p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500" value={loginForm.username} onChange={e => setLoginForm({...loginForm, username: e.target.value})} />
+              </div>
+              <div className="relative">
+                <Key className="absolute left-3 top-3.5 text-slate-400" size={18}/>
+                <input required type="password" placeholder="Password" className="w-full pl-10 p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
+              </div>
+              {error && <p className="text-red-500 text-sm flex items-center gap-1 font-medium"><AlertCircle size={14}/> {error}</p>}
+              <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 disabled:opacity-50">
+                {loading ? 'Memverifikasi...' : 'Masuk'}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* Admin Dashboard */}
+        {view === 'admin_dashboard' && role === 'admin' && (
+          <div className="space-y-10 animate-in fade-in">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <h2 className="text-3xl font-bold">Manajemen Pemilihan</h2>
+              <div className="flex gap-2">
+                <button onClick={() => { setEditingVoter(null); setVoterForm({username:'', password:''}); setIsVoterModalOpen(true); }} className="bg-white border-2 text-slate-700 px-4 py-2 rounded-xl flex items-center gap-2 font-bold hover:bg-slate-50"><UserPlus size={18}/> Tambah Pemilih</button>
+                <button onClick={() => { setEditingCandidate(null); setCandForm({nama:'', foto:''}); setIsCandModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 font-bold hover:bg-blue-700 shadow-md"><Plus size={18}/> Tambah Kandidat</button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* List Kandidat */}
+              <div className="bg-white rounded-3xl border shadow-sm p-6">
+                <h3 className="text-xl font-bold mb-6 flex items-center gap-2"><ImageIcon size={20} className="text-blue-600"/> Daftar Kandidat</h3>
+                <div className="space-y-4">
+                  {candidates.map(c => (
+                    <div key={c.id} className="flex items-center justify-between p-4 border rounded-2xl hover:bg-slate-50 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <img src={c.foto} className="w-12 h-12 rounded-full object-cover border" alt=""/>
+                        <div>
+                          <p className="font-bold">{c.nama}</p>
+                          <p className="text-xs text-slate-400">{c.votes || 0} suara diperoleh</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        <button onClick={() => { setEditingCandidate(c); setCandForm(c); setIsCandModalOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg"><Edit size={18}/></button>
+                        <button onClick={() => deleteCandidate(c.id)} className="p-2 text-red-600 hover:bg-red-100 rounded-lg"><Trash2 size={18}/></button>
+                      </div>
+                    </div>
+                  ))}
+                  {candidates.length === 0 && <p className="text-center py-10 text-slate-400 italic text-sm">Belum ada kandidat.</p>}
+                </div>
+              </div>
+
+              {/* List Pemilih Terdaftar */}
+              <div className="bg-white rounded-3xl border shadow-sm p-6">
+                <h3 className="text-xl font-bold mb-6 flex items-center gap-2"><Users size={20} className="text-blue-600"/> Akun Pemilih ({registeredVoters.length})</h3>
+                <div className="max-h-[400px] overflow-y-auto pr-2 space-y-3">
+                  {registeredVoters.map(v => (
+                    <div key={v.id} className="flex items-center justify-between p-4 border rounded-2xl">
+                      <div>
+                        <p className="font-bold">{v.username}</p>
+                        <div className="flex items-center gap-2">
+                           <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-mono">PW: {v.password}</span>
+                           {v.hasVoted ? (
+                             <span className="text-[10px] text-green-600 font-bold flex items-center gap-1"><CheckCircle2 size={10}/> Sudah Memilih</span>
+                           ) : (
+                             <span className="text-[10px] text-amber-500 font-bold">Belum Memilih</span>
+                           )}
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        <button onClick={() => { setEditingVoter(v); setVoterForm({username: v.username, password: v.password}); setIsVoterModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600"><Edit size={16}/></button>
+                        <button onClick={() => deleteVoter(v.username)} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={16}/></button>
+                      </div>
+                    </div>
+                  ))}
+                   {registeredVoters.length === 0 && <p className="text-center py-10 text-slate-400 italic text-sm">Daftarkan pemilih terlebih dahulu.</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Voting Page */}
+        {view === 'voting' && (
+          <div className="space-y-8 animate-in slide-in-from-bottom-6">
+            <div className="text-center">
+              <h2 className="text-3xl font-bold mb-2 text-slate-900">Selamat Datang, {currentUserProfile?.username}!</h2>
+              <p className="text-slate-500">Silakan tentukan pilihan Anda dengan bijak.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {candidates.map(c => (
+                <div key={c.id} className="bg-white rounded-[2rem] overflow-hidden shadow-lg border border-slate-100 flex flex-col hover:translate-y-[-4px] transition-all">
+                  <img src={c.foto} className="w-full h-64 object-cover" alt=""/>
+                  <div className="p-8 text-center flex-grow flex flex-col justify-between">
+                    <h3 className="text-2xl font-bold mb-6">{c.nama}</h3>
+                    <button onClick={() => handleVote(c.id)} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-100">Pilih Kandidat Ini</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Results */}
+        {view === 'results' && (
+          <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in">
+             <div className="text-center mb-10">
+               <h2 className="text-3xl font-bold mb-2">Hasil Perolehan Suara</h2>
+               <p className="text-slate-500">Total partisipasi: {totalVotes} pemilih</p>
+             </div>
+             {candidates.sort((a,b) => (b.votes || 0) - (a.votes || 0)).map(c => {
+               const pct = totalVotes > 0 ? ((c.votes || 0) / totalVotes * 100).toFixed(1) : 0;
+               return (
+                 <div key={c.id} className="bg-white p-6 rounded-3xl border shadow-sm">
+                   <div className="flex justify-between items-center mb-4">
+                     <div className="flex items-center gap-4">
+                        <img src={c.foto} className="w-14 h-14 rounded-2xl object-cover border" alt=""/>
+                        <div>
+                          <h4 className="font-bold text-lg">{c.nama}</h4>
+                          <span className="text-xs text-slate-400">{c.votes || 0} Suara Sah</span>
+                        </div>
+                     </div>
+                     <span className="text-2xl font-black text-blue-600">{pct}%</span>
+                   </div>
+                   <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden">
+                     <div className="h-full bg-blue-600 transition-all duration-1000 ease-out" style={{width: `${pct}%`}}/>
+                   </div>
+                 </div>
+               )
+             })}
+          </div>
+        )}
+
+        {/* Success */}
+        {view === 'success' && (
+          <div className="text-center py-20 space-y-6 animate-in zoom-in">
+            <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto shadow-inner"><CheckCircle2 size={48}/></div>
+            <div className="space-y-2">
+              <h2 className="text-4xl font-black">Berhasil Terkirim!</h2>
+              <p className="text-slate-500 text-lg">Terima kasih telah menggunakan hak pilih Anda secara jujur dan adil.</p>
+            </div>
+            <button onClick={() => setView('results')} className="bg-blue-600 text-white px-10 py-4 rounded-2xl font-bold text-lg hover:scale-105 transition-transform shadow-xl shadow-blue-100">Lihat Hasil Real-time</button>
+          </div>
+        )}
+      </main>
+
+      {/* MODAL KANDIDAT */}
+      {isCandModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95">
+            <button onClick={() => setIsCandModalOpen(false)} className="absolute top-6 right-6 p-2 hover:bg-slate-100 rounded-full"><X/></button>
+            <h3 className="text-2xl font-bold mb-8 text-center">{editingCandidate ? 'Update Data Kandidat' : 'Kandidat Baru'}</h3>
+            <form onSubmit={saveCandidate} className="space-y-6">
+              <div>
+                <label className="block text-sm font-bold mb-2 text-slate-700">Nama Lengkap</label>
+                <input required placeholder="Nama kandidat..." className="w-full p-4 border rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none" value={candForm.nama} onChange={e => setCandForm({...candForm, nama: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-2 text-slate-700">Foto (Max 1MB)</label>
+                <div className={`relative border-2 border-dashed rounded-[2rem] p-8 flex flex-col items-center justify-center transition-colors ${candForm.foto ? 'border-blue-300 bg-blue-50' : 'border-slate-300'}`}>
+                  <input type="file" accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={handleFileChange} />
+                  {candForm.foto ? (
+                    <img src={candForm.foto} className="w-32 h-32 rounded-3xl object-cover border-4 border-white shadow-xl" alt="Preview"/>
+                  ) : (
+                    <div className="text-center text-slate-400">
+                      <Upload size={40} className="mx-auto mb-3 opacity-30"/>
+                      <p className="text-sm font-medium">Unggah Foto Kandidat</p>
+                    </div>
+                  )}
+                </div>
+                {fileError && <p className="text-red-500 text-xs font-bold mt-2">{fileError}</p>}
+              </div>
+              <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-blue-700 shadow-lg">Simpan Kandidat</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PEMILIH (VOTER) */}
+      {isVoterModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative animate-in zoom-in-95">
+            <button onClick={() => setIsVoterModalOpen(false)} className="absolute top-6 right-6 p-2 hover:bg-slate-100 rounded-full"><X/></button>
+            <h3 className="text-2xl font-bold mb-8 text-center">Registrasi Akun Pemilih</h3>
+            <form onSubmit={saveVoter} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold mb-2 text-slate-700">Username Unik</label>
+                <input required disabled={!!editingVoter} placeholder="ID Pemilih..." className="w-full p-4 border rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-slate-50 disabled:text-slate-400" value={voterForm.username} onChange={e => setVoterForm({...voterForm, username: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-2 text-slate-700">Password Akses</label>
+                <input required type="text" placeholder="Password..." className="w-full p-4 border rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none" value={voterForm.password} onChange={e => setVoterForm({...voterForm, password: e.target.value})} />
+              </div>
+              <button type="submit" className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold text-lg hover:bg-black shadow-lg mt-4 transition-all">
+                {editingVoter ? 'Simpan Perubahan' : 'Daftarkan Akun'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
