@@ -3,333 +3,498 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>E-Voting Digital</title>
-    <!-- Tailwind CSS - Load First -->
+    <title>E-Voting App PRO+</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & Babel -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- Firebase SDK Compat -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        /* Optimized Fade In */
-        .fade-in { animation: opac 0.3s ease-in; }
-        @keyframes opac { from { opacity: 0; } to { opacity: 1; } }
-        /* Skeleton loading style */
-        .skeleton { background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; animation: loading 1.5s infinite; }
-        @keyframes loading { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+        .progress-bar { transition: width 0.5s ease-in-out; }
+        .tab-content, .admin-sub-content { display: none; }
+        .active { display: block !important; }
+        .active-tab { background-color: #3b82f6 !important; color: white !important; }
+        button { cursor: pointer; }
     </style>
 </head>
-<body class="bg-slate-50">
-    <div id="root">
-        <!-- Initial Static HTML for instant visual feedback -->
-        <div class="min-h-screen flex items-center justify-center">
-            <div class="text-slate-300 font-bold animate-pulse">Memuat...</div>
+<body class="bg-gray-100 min-h-screen p-4 pb-20">
+
+    <div class="max-w-2xl mx-auto">
+        <!-- Navigasi Utama -->
+        <nav class="flex mb-6 bg-white rounded-lg shadow-sm p-1">
+            <button onclick="switchTab('voting')" id="btn-voting" class="flex-1 py-2 px-4 rounded-md text-sm font-medium active-tab transition">Voting</button>
+            <button onclick="switchTab('admin')" id="btn-admin" class="flex-1 py-2 px-4 rounded-md text-sm font-medium text-gray-500 hover:bg-gray-100 transition">Admin</button>
+        </nav>
+
+        <div class="bg-white p-6 md:p-8 rounded-xl shadow-2xl w-full">
+            
+            <!-- ================= TAB VOTING ================= -->
+            <div id="tab-voting" class="tab-content active">
+                <header class="text-center mb-8">
+                    <h1 class="text-3xl font-bold text-blue-600">E-Voting Online</h1>
+                    <p id="timerDisplay" class="text-red-500 font-bold mt-2 text-sm"></p>
+                </header>
+
+                <div id="statusMessage" class="hidden mb-6 p-4 rounded-lg text-center font-medium border"></div>
+
+                <div id="tokenInputSection" class="mb-8 p-6 bg-blue-50 border border-blue-200 rounded-xl shadow-inner text-center">
+                    <h3 class="text-blue-800 font-bold mb-2">Validasi Pemilih</h3>
+                    <p class="text-xs text-blue-600 mb-4">Masukkan token unik Anda untuk memilih</p>
+                    <div class="flex gap-2">
+                        <input type="text" id="voterToken" class="flex-1 p-3 border-2 border-blue-300 rounded-lg text-center font-black tracking-[0.5em] uppercase focus:outline-blue-500" placeholder="TOKEN">
+                        <button onclick="validateToken()" class="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 transition">Verifikasi</button>
+                    </div>
+                </div>
+
+                <div id="votingSection" class="grid grid-cols-1 md:grid-cols-2 gap-4 opacity-30 pointer-events-none transition-opacity duration-500">
+                    <!-- Kandidat di-render via JS -->
+                </div>
+
+                <div id="resultSection" class="mt-8 pt-8 border-t border-gray-200 text-center">
+                    <p id="totalVotes" class="text-sm font-bold text-gray-600 font-mono text-lg">Total Suara Masuk: 0</p>
+                </div>
+            </div>
+
+            <!-- ================= TAB ADMIN ================= -->
+            <div id="tab-admin" class="tab-content">
+                <div id="admin-login" class="space-y-4 max-w-sm mx-auto">
+                    <h2 class="text-2xl font-bold text-gray-800 text-center">Login Admin</h2>
+                    <input type="password" id="adminPassword" class="w-full p-2 border border-gray-300 rounded-md focus:outline-blue-500" placeholder="Password (admin123)">
+                    <button onclick="checkAdmin()" class="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 font-bold transition">Masuk</button>
+                </div>
+
+                <div id="admin-panel" class="hidden space-y-6">
+                    <div class="flex justify-between items-center border-b pb-4">
+                        <h2 class="text-2xl font-bold text-gray-800 text-blue-600">Admin Dashboard</h2>
+                        <button onclick="logoutAdmin()" class="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-red-500 hover:text-white transition text-xs">Keluar</button>
+                    </div>
+
+                    <div class="flex space-x-2 bg-gray-100 p-1 rounded-md overflow-x-auto">
+                        <button onclick="switchAdminSub('stats')" id="sub-btn-stats" class="flex-1 py-1 px-3 rounded text-[10px] font-bold active-tab">STATISTIK</button>
+                        <button onclick="switchAdminSub('candidates')" id="sub-btn-candidates" class="flex-1 py-1 px-3 rounded text-[10px] font-bold text-gray-500">KANDIDAT</button>
+                        <button onclick="switchAdminSub('tokens')" id="sub-btn-tokens" class="flex-1 py-1 px-3 rounded text-[10px] font-bold text-gray-500">TOKEN</button>
+                        <button onclick="switchAdminSub('timer')" id="sub-btn-timer" class="flex-1 py-1 px-3 rounded text-[10px] font-bold text-gray-500">WAKTU</button>
+                    </div>
+
+                    <!-- SUB: STATISTIK -->
+                    <div id="admin-sub-stats" class="admin-sub-content active space-y-4">
+                        <h3 class="font-bold text-gray-700 uppercase text-sm tracking-wider">Hasil Perolehan Suara</h3>
+                        <div id="adminStatsContainer" class="space-y-4"></div>
+                    </div>
+
+                    <!-- SUB: MANAJEMEN KANDIDAT -->
+                    <div id="admin-sub-candidates" class="admin-sub-content space-y-6">
+                        <div id="candFormContainer" class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                            <h3 id="formTitle" class="font-bold text-blue-800 mb-3 text-sm">Tambah Kandidat Baru</h3>
+                            <div class="space-y-3">
+                                <input type="hidden" id="editCandId">
+                                <input type="text" id="candName" class="w-full p-2 text-sm border border-gray-300 rounded" placeholder="Nama Kandidat">
+                                <div class="flex flex-col space-y-1">
+                                    <label class="text-xs text-gray-500 font-bold">Foto (Opsional)</label>
+                                    <input type="file" id="candPhoto" accept="image/*" class="text-xs">
+                                </div>
+                                <div class="flex gap-2">
+                                    <button onclick="handleCandidateSubmit()" id="btnSubmitCand" class="flex-1 bg-blue-600 text-white py-2 rounded text-sm font-bold">SIMPAN</button>
+                                    <button onclick="cancelEdit()" id="btnCancelEdit" class="hidden flex-1 bg-gray-400 text-white py-2 rounded text-sm font-bold">BATAL</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            <h3 class="font-bold text-gray-700 text-sm">Daftar Kandidat</h3>
+                            <div id="adminCandList" class="space-y-2"></div>
+                        </div>
+                    </div>
+
+                    <!-- SUB: TOKEN MANAGEMENT -->
+                    <div id="admin-sub-tokens" class="admin-sub-content space-y-4">
+                        <h3 class="font-bold text-gray-700 text-sm italic">Manajemen Token</h3>
+                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                            <div class="flex gap-2">
+                                <input type="number" id="tokenAmount" class="w-full p-2 text-sm border rounded" placeholder="Jumlah Token" min="1" max="100">
+                                <button onclick="generateTokens()" class="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold">Generate</button>
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-center">
+                                <h4 class="text-xs font-bold text-gray-500">Daftar Token</h4>
+                                <div class="flex gap-2">
+                                    <button onclick="copyTokens()" class="text-[10px] text-blue-500 underline">Salin Aktif</button>
+                                    <span class="text-gray-300">|</span>
+                                    <button onclick="clearUnusedTokens()" class="text-[10px] text-red-500 underline">Hapus Tak Terpakai</button>
+                                </div>
+                            </div>
+                            <div id="adminTokenList" class="max-h-60 overflow-y-auto border rounded bg-white p-2 text-xs font-mono space-y-1"></div>
+                        </div>
+                    </div>
+
+                    <!-- SUB: BATAS WAKTU -->
+                    <div id="admin-sub-timer" class="admin-sub-content space-y-4">
+                        <h3 class="font-bold text-gray-700 text-sm italic text-center">Atur Batas Waktu Pemilihan</h3>
+                        <div class="bg-gray-50 p-6 rounded-lg border-2 border-dashed border-gray-300">
+                            <label class="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">Pilih Tanggal & Jam Penutupan</label>
+                            <input type="datetime-local" id="expiryInput" class="w-full p-3 border-2 border-gray-200 rounded-lg mb-4 focus:border-blue-500 outline-none transition-colors">
+                            <div class="space-y-3">
+                                <button onclick="saveExpiry()" class="w-full bg-blue-600 text-white py-3 rounded-lg font-bold shadow-md hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                                    </svg>
+                                    SIMPAN BATAS WAKTU
+                                </button>
+                                <button onclick="clearExpiry()" class="w-full bg-white text-red-600 py-2 rounded-lg text-xs font-bold border border-red-200 hover:bg-red-50 transition-all">
+                                    HAPUS BATAS WAKTU (OPEN ENDED)
+                                </button>
+                            </div>
+                            <p id="adminTimerStatus" class="mt-4 text-[10px] text-center text-gray-400 font-medium italic"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <script type="text/babel">
-        const { useState, useEffect, useMemo, useCallback } = React;
-        
-        // 1. Instant Firebase Initialization
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'evoting-app-prod';
+    <script>
+        // DATA DEFAULTS
+        const defaultCandidates = [
+            { id: 1, name: "Kandidat Pertama", photo: null, votes: 0 },
+            { id: 2, name: "Kandidat Kedua", photo: null, votes: 0 }
+        ];
 
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
+        // STATE
+        let candidates = JSON.parse(localStorage.getItem('ev_candidates')) || defaultCandidates;
+        let tokens = JSON.parse(localStorage.getItem('ev_tokens')) || [];
+        let hasVoted = localStorage.getItem('ev_voted_status') === 'true';
+        let expiryTime = localStorage.getItem('ev_expiry') || null;
+        let activeToken = null; 
+
+        // GLOBAL TABS
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.getElementById('tab-' + tab).classList.add('active');
+            document.getElementById('btn-voting').classList.toggle('active-tab', tab === 'voting');
+            document.getElementById('btn-admin').classList.toggle('active-tab', tab === 'admin');
+            updateUI();
         }
-        const auth = firebase.auth();
-        const db = firebase.firestore();
 
-        // Optimized Icon Component
-        const Icon = ({ name, size = 20, className = "" }) => {
-            useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
-            return <i data-lucide={name} style={{ width: size, height: size }} className={className}></i>;
-        };
+        function switchAdminSub(sub) {
+            document.querySelectorAll('.admin-sub-content').forEach(c => c.classList.remove('active'));
+            document.getElementById('admin-sub-' + sub).classList.add('active');
+            ['stats', 'candidates', 'tokens', 'timer'].forEach(id => {
+                const btn = document.getElementById('sub-btn-' + id);
+                if(btn) btn.classList.toggle('active-tab', id === sub);
+            });
+            if(sub === 'timer') syncTimerInput();
+        }
 
-        function App() {
-            const [user, setUser] = useState(null);
-            const [isAuthReady, setIsAuthReady] = useState(false);
-            const [role, setRole] = useState('guest');
-            const [view, setView] = useState('login');
-            const [candidates, setCandidates] = useState([]);
-            const [voters, setVoters] = useState([]);
-            const [settings, setSettings] = useState({ startTime: '', endTime: '' });
-            const [loading, setLoading] = useState(false);
-            const [error, setError] = useState('');
-            const [loginForm, setLoginForm] = useState({ username: '', password: '' });
-            const [lastUpdate, setLastUpdate] = useState(new Date());
+        // CANDIDATE LOGIC
+        function handleCandidateSubmit() {
+            const id = document.getElementById('editCandId').value;
+            const name = document.getElementById('candName').value;
+            const photoInput = document.getElementById('candPhoto');
+            if(!name) return alert('Nama harus diisi');
 
-            // Modals state
-            const [modals, setModals] = useState({ cand: false, voter: false, settings: false });
-            const [candForm, setCandForm] = useState({ nama: '', foto: '' });
-            const [voterForm, setVoterForm] = useState({ username: '', password: '' });
+            if(photoInput.files && photoInput.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) { processSave(id, name, e.target.result); };
+                reader.readAsDataURL(photoInput.files[0]);
+            } else {
+                processSave(id, name, null);
+            }
+        }
 
-            // Initialize Auth Fast
-            useEffect(() => {
-                const unsub = auth.onAuthStateChanged((u) => {
-                    setUser(u);
-                    setIsAuthReady(true);
-                    if (!u) {
-                        // Silent background login to avoid blocking UI
-                        const performAuth = async () => {
-                            try {
-                                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                                    await auth.signInWithCustomToken(__initial_auth_token);
-                                } else {
-                                    await auth.signInAnonymously();
-                                }
-                            } catch (e) { console.error("Silent Auth Failed", e); }
-                        };
-                        performAuth();
-                    }
-                });
-                return () => unsub();
-            }, []);
+        function processSave(id, name, photoData) {
+            if(id) {
+                const idx = candidates.findIndex(c => c.id == id);
+                if(idx !== -1) {
+                    candidates[idx].name = name;
+                    if(photoData) candidates[idx].photo = photoData;
+                }
+            } else {
+                const newId = candidates.length > 0 ? Math.max(...candidates.map(c => c.id)) + 1 : 1;
+                candidates.push({ id: newId, name: name, photo: photoData, votes: 0 });
+            }
+            saveAndRefresh();
+            cancelEdit();
+        }
 
-            // Data Fetching (Only if Auth is ready)
-            useEffect(() => {
-                if (!user) return;
-                
-                const rootPath = db.collection('artifacts').doc(appId).collection('public').doc('data');
-                
-                const unsubCand = rootPath.collection('candidates').onSnapshot(s => {
-                    setCandidates(s.docs.map(d => ({ id: d.id, ...d.data() })));
-                    setLastUpdate(new Date());
-                });
+        function deleteCandidate(id) {
+            const cand = candidates.find(c => c.id == id);
+            if(!cand) return;
+            if(confirm(`Hapus kandidat "${cand.name}"? Semua suara (${cand.votes}) akan hilang.`)) {
+                candidates = candidates.filter(c => c.id != id);
+                saveAndRefresh();
+            }
+        }
 
-                const unsubVoter = rootPath.collection('voters').onSnapshot(s => {
-                    setVoters(s.docs.map(d => ({ id: d.id, ...d.data() })));
-                });
+        function editCandidate(id) {
+            const cand = candidates.find(c => c.id == id);
+            if(!cand) return;
+            document.getElementById('editCandId').value = cand.id;
+            document.getElementById('candName').value = cand.name;
+            document.getElementById('formTitle').innerText = "Edit: " + cand.name;
+            document.getElementById('btnSubmitCand').innerText = "UPDATE DATA";
+            document.getElementById('btnCancelEdit').classList.remove('hidden');
+        }
 
-                const unsubSettings = rootPath.collection('config').doc('votingTime').onSnapshot(doc => {
-                    if (doc.exists) setSettings(doc.data());
-                });
+        function cancelEdit() {
+            document.getElementById('editCandId').value = "";
+            document.getElementById('candName').value = "";
+            document.getElementById('candPhoto').value = "";
+            document.getElementById('formTitle').innerText = "Tambah Kandidat Baru";
+            document.getElementById('btnSubmitCand').innerText = "SIMPAN";
+            document.getElementById('btnCancelEdit').classList.add('hidden');
+        }
 
-                return () => { unsubCand(); unsubVoter(); unsubSettings(); };
-            }, [user]);
+        // TOKEN LOGIC
+        function generateTokens() {
+            const amount = parseInt(document.getElementById('tokenAmount').value);
+            if(!amount || amount < 1) return alert('Masukkan jumlah valid');
+            for(let i=0; i < amount; i++) {
+                const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+                if (!tokens.some(t => t.code === code)) tokens.push({ code, used: false });
+                else i--;
+            }
+            saveAndRefresh();
+            document.getElementById('tokenAmount').value = '';
+        }
 
-            const votingStatus = useMemo(() => {
-                if (!settings.startTime || !settings.endTime) return 'ready';
-                const now = Date.now();
-                const start = new Date(settings.startTime).getTime();
-                const end = new Date(settings.endTime).getTime();
-                return now < start ? 'not_started' : (now > end ? 'ended' : 'ongoing');
-            }, [settings]);
+        function deleteToken(code) {
+            const t = tokens.find(tk => tk.code === code);
+            if(t && t.used) return alert('Token sudah terpakai tidak bisa dihapus!');
+            if(confirm(`Hapus token ${code}?`)) {
+                tokens = tokens.filter(tk => tk.code !== code);
+                saveAndRefresh();
+            }
+        }
 
-            const handleLogin = async (e) => {
-                e.preventDefault();
-                setLoading(true);
-                setError('');
-                
-                try {
-                    if (loginForm.username === 'admin' && loginForm.password === 'admin123') {
-                        setRole('admin');
-                        setView('admin');
-                    } else {
-                        const vDoc = await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('voters').doc(loginForm.username).get();
-                        if (vDoc.exists && vDoc.data().password === loginForm.password) {
-                            setRole('user');
-                            setView(vDoc.data().hasVoted ? 'result' : 'vote');
-                        } else {
-                            setError('Kredensial tidak valid');
-                        }
-                    }
-                } catch (err) { setError('Gagal terhubung ke server'); }
-                setLoading(false);
-            };
+        function clearUnusedTokens() {
+            const count = tokens.filter(t => !t.used).length;
+            if(count === 0) return alert('Tidak ada token aktif.');
+            if(confirm(`Hapus ${count} token yang belum terpakai?`)) {
+                tokens = tokens.filter(t => t.used);
+                saveAndRefresh();
+            }
+        }
 
-            const submitVote = async (id) => {
-                if (votingStatus !== 'ongoing') return alert("Sesi pemilihan tidak aktif.");
-                setLoading(true);
-                try {
-                    const voterRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('voters').doc(loginForm.username);
-                    const candRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('candidates').doc(id);
-                    await Promise.all([
-                        voterRef.update({ hasVoted: true }),
-                        candRef.update({ votes: firebase.firestore.FieldValue.increment(1) })
-                    ]);
-                    setView('result');
-                } catch (err) { alert("Gagal mengirim suara."); }
-                setLoading(false);
-            };
+        function copyTokens() {
+            const active = tokens.filter(t => !t.used).map(t => t.code).join(', ');
+            if(!active) return alert('Kosong');
+            const el = document.createElement('textarea');
+            el.value = active;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            alert('Berhasil disalin!');
+        }
 
-            // Loading state while checking initial auth
-            if (!isAuthReady) {
-                return (
-                    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-                        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                    </div>
-                );
+        // VOTING CORE
+        function validateToken() {
+            const input = document.getElementById('voterToken').value.toUpperCase().trim();
+            const t = tokens.find(tk => tk.code === input && !tk.used);
+            if(t) {
+                activeToken = input;
+                document.getElementById('votingSection').style.opacity = "1";
+                document.getElementById('votingSection').style.pointerEvents = "auto";
+                document.getElementById('tokenInputSection').classList.add('hidden');
+                showStatus('Token Valid! Pilih kandidat.', 'bg-blue-100 text-blue-700 border-blue-200');
+            } else alert('Token tidak valid!');
+        }
+
+        function vote(id) {
+            if(isExpired()) return alert('Sudah ditutup');
+            if(hasVoted || !activeToken) return;
+            const idx = candidates.findIndex(c => c.id == id);
+            if(idx !== -1) {
+                candidates[idx].votes++;
+                const tIdx = tokens.findIndex(tk => tk.code === activeToken);
+                if(tIdx !== -1) tokens[tIdx].used = true;
+                hasVoted = true;
+                localStorage.setItem('ev_voted_status', 'true');
+                saveAndRefresh();
+                showStatus('Pilihan Anda Terkirim!', 'bg-green-100 text-green-700 border-green-200');
+            }
+        }
+
+        // TIMER LOGIC - PERBAIKAN DI SINI
+        function syncTimerInput() {
+            if(expiryTime) {
+                const date = new Date(parseInt(expiryTime));
+                // Format ke YYYY-MM-DDThh:mm sesuai kebutuhan input datetime-local
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                document.getElementById('expiryInput').value = `${year}-${month}-${day}T${hours}:${minutes}`;
+                document.getElementById('adminTimerStatus').innerText = "Waktu aktif saat ini: " + date.toLocaleString();
+            } else {
+                document.getElementById('expiryInput').value = "";
+                document.getElementById('adminTimerStatus').innerText = "Belum ada batas waktu yang diatur.";
+            }
+        }
+
+        function saveExpiry() {
+            const val = document.getElementById('expiryInput').value;
+            if(!val) return alert('Silakan pilih waktu terlebih dahulu!');
+            
+            const selectedTime = new Date(val).getTime();
+            if(selectedTime <= Date.now()) {
+                return alert('Batas waktu harus di masa depan!');
             }
 
-            return (
-                <div className="min-h-screen fade-in">
-                    <header className="bg-white border-b px-6 py-4 sticky top-0 z-40 shadow-sm">
-                        <div className="max-w-4xl mx-auto flex justify-between items-center">
-                            <h1 className="font-extrabold text-xl flex items-center gap-2 text-blue-600 tracking-tight">
-                                <Icon name="vote" size={24} /> E-VOTING
-                            </h1>
-                            {role !== 'guest' && (
-                                <button onClick={() => window.location.reload()} className="p-2 text-slate-400 hover:text-red-500 transition-colors">
-                                    <Icon name="log-out" size={20} />
-                                </button>
-                            )}
-                        </div>
-                    </header>
-
-                    <main className="max-w-4xl mx-auto p-6">
-                        {view === 'login' && (
-                            <div className="max-w-sm mx-auto mt-12">
-                                <div className="bg-white p-8 rounded-[2rem] border shadow-2xl shadow-blue-100/50">
-                                    <div className="text-center mb-8">
-                                        <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                            <Icon name="shield-check" size={32} />
-                                        </div>
-                                        <h2 className="text-2xl font-black text-slate-800">Sistem E-Voting</h2>
-                                        <p className="text-slate-400 text-sm mt-1">Silakan masuk untuk memulai</p>
-                                    </div>
-                                    
-                                    <form onSubmit={handleLogin} className="space-y-4">
-                                        <div>
-                                            <input required placeholder="Username" className="w-full px-5 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:border-blue-500 focus:bg-white outline-none transition-all" value={loginForm.username} onChange={e => setLoginForm({...loginForm, username: e.target.value})} />
-                                        </div>
-                                        <div>
-                                            <input required type="password" placeholder="Password" className="w-full px-5 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:border-blue-500 focus:bg-white outline-none transition-all" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
-                                        </div>
-                                        {error && <div className="bg-red-50 text-red-500 p-3 rounded-xl text-xs font-bold text-center border border-red-100">{error}</div>}
-                                        <button disabled={loading} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50">
-                                            {loading ? 'MEMPROSES...' : 'LOG IN'}
-                                        </button>
-                                    </form>
-                                    <p className="mt-8 text-[10px] text-center text-slate-300 font-bold uppercase tracking-widest">Digital Authentication Secured</p>
-                                </div>
-                            </div>
-                        )}
-
-                        {view === 'admin' && (
-                            <div className="space-y-6">
-                                <div className="flex justify-between items-center bg-white p-6 rounded-3xl border shadow-sm">
-                                    <div>
-                                        <h2 className="text-xl font-black">ADMIN DASHBOARD</h2>
-                                        <p className="text-slate-400 text-xs">Kelola kandidat dan pantau suara</p>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => setView('result')} className="bg-slate-100 text-slate-600 px-4 py-2 rounded-xl text-xs font-bold">Hasil Suara</button>
-                                        <button onClick={() => setModals({...modals, settings: true})} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold">Atur Sesi</button>
-                                    </div>
-                                </div>
-                                <div className="grid md:grid-cols-2 gap-6">
-                                    {/* Candidate Card */}
-                                    <div className="bg-white border rounded-3xl p-6 shadow-sm">
-                                        <div className="flex justify-between items-center mb-6">
-                                            <h3 className="font-bold">Kandidat ({candidates.length})</h3>
-                                            <button onClick={() => setModals({...modals, cand: true})} className="text-blue-600 font-bold text-xs">+ Tambah</button>
-                                        </div>
-                                        <div className="space-y-3">
-                                            {candidates.map(c => (
-                                                <div key={c.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                                                    <div className="flex items-center gap-3">
-                                                        <img src={c.foto || 'https://via.placeholder.com/40'} className="w-10 h-10 rounded-xl object-cover" />
-                                                        <span className="font-bold text-sm">{c.nama}</span>
-                                                    </div>
-                                                    <button onClick={() => db.collection('artifacts').doc(appId).collection('public').doc('data').collection('candidates').doc(c.id).delete()} className="text-red-400 hover:bg-red-50 p-1 rounded-lg transition-colors"><Icon name="trash-2" size={16}/></button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    {/* Voter Card */}
-                                    <div className="bg-white border rounded-3xl p-6 shadow-sm">
-                                        <div className="flex justify-between items-center mb-6">
-                                            <h3 className="font-bold">Pemilih ({voters.length})</h3>
-                                            <button onClick={() => setModals({...modals, voter: true})} className="text-blue-600 font-bold text-xs">+ Tambah</button>
-                                        </div>
-                                        <div className="space-y-3 max-h-[250px] overflow-y-auto">
-                                            {voters.map(v => (
-                                                <div key={v.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                                                    <span className="text-sm font-medium">{v.username}</span>
-                                                    <span className={`text-[9px] px-2 py-1 rounded-full font-bold ${v.hasVoted ? 'bg-green-100 text-green-600' : 'bg-slate-200 text-slate-500'}`}>{v.hasVoted ? 'SUDAH' : 'BELUM'}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {view === 'vote' && (
-                            <div className="animate-in">
-                                <h2 className="text-2xl font-black text-center mb-8">Halo, {loginForm.username}! Pilih Suaramu:</h2>
-                                <div className="grid sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
-                                    {candidates.map(c => (
-                                        <div key={c.id} className="bg-white p-6 rounded-[2rem] border-2 border-transparent hover:border-blue-500 shadow-xl transition-all text-center">
-                                            <img src={c.foto} className="w-32 h-32 rounded-3xl object-cover mx-auto mb-4 shadow-md" />
-                                            <h3 className="text-lg font-bold mb-4">{c.nama}</h3>
-                                            <button onClick={() => submitVote(c.id)} className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-blue-600 transition-colors">PILIH</button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {view === 'result' && (
-                            <div className="max-w-md mx-auto">
-                                <h2 className="text-2xl font-black text-center mb-8">Hasil Perhitungan Suara</h2>
-                                <div className="space-y-4">
-                                    {candidates.sort((a,b) => (b.votes || 0) - (a.votes || 0)).map((c, idx) => {
-                                        const total = candidates.reduce((acc, curr) => acc + (curr.votes || 0), 0);
-                                        const pct = total > 0 ? ((c.votes || 0) / total * 100).toFixed(1) : 0;
-                                        return (
-                                            <div key={c.id} className="bg-white p-6 rounded-2xl border shadow-sm">
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <span className="font-bold">{c.nama}</span>
-                                                    <span className="text-blue-600 font-bold">{pct}%</span>
-                                                </div>
-                                                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-blue-600 transition-all duration-1000" style={{ width: `${pct}%` }}></div>
-                                                </div>
-                                                <p className="text-[10px] mt-2 text-slate-400">{c.votes || 0} Suara Terkumpul</p>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                {role === 'admin' && (
-                                    <button onClick={() => setView('admin')} className="w-full mt-8 py-3 text-slate-400 font-bold border-2 border-dashed rounded-xl hover:text-slate-600">Kembali ke Dashboard</button>
-                                )}
-                            </div>
-                        )}
-                    </main>
-
-                    {/* Quick Modals */}
-                    {modals.settings && (
-                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                            <div className="bg-white w-full max-w-xs rounded-3xl p-6">
-                                <h3 className="font-bold mb-4">Atur Waktu Pemilihan</h3>
-                                <input type="datetime-local" className="w-full border p-3 rounded-xl mb-3" onChange={e => setSettings({...settings, startTime: e.target.value})} />
-                                <input type="datetime-local" className="w-full border p-3 rounded-xl mb-4" onChange={e => setSettings({...settings, endTime: e.target.value})} />
-                                <div className="flex gap-2">
-                                    <button onClick={() => setModals({...modals, settings: false})} className="flex-1 py-2 text-slate-400 font-bold">Batal</button>
-                                    <button onClick={async () => { await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('config').doc('votingTime').set(settings); setModals({...modals, settings: false}); }} className="flex-1 py-2 bg-blue-600 text-white rounded-xl font-bold">Simpan</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            );
+            expiryTime = selectedTime.toString();
+            localStorage.setItem('ev_expiry', expiryTime);
+            
+            // Langsung update UI agar perubahan terlihat di halaman depan
+            updateUI();
+            syncTimerInput();
+            alert('Batas waktu berhasil disimpan!');
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        function clearExpiry() {
+            if(confirm('Hapus batas waktu? Pemilihan akan tetap dibuka tanpa batas.')) {
+                expiryTime = null;
+                localStorage.removeItem('ev_expiry');
+                document.getElementById('expiryInput').value = "";
+                updateUI();
+                syncTimerInput();
+                alert('Batas waktu dihapus.');
+            }
+        }
+
+        function isExpired() { return expiryTime && Date.now() > parseInt(expiryTime); }
+
+        // RENDERING
+        function saveAndRefresh() {
+            localStorage.setItem('ev_candidates', JSON.stringify(candidates));
+            localStorage.setItem('ev_tokens', JSON.stringify(tokens));
+            updateUI();
+            renderAdminView();
+        }
+
+        function updateUI() {
+            const grid = document.getElementById('votingSection');
+            const timer = document.getElementById('timerDisplay');
+            grid.innerHTML = '';
+            const expired = isExpired();
+            
+            if(expired) {
+                timer.innerText = "Sesi Pemilihan Telah Berakhir";
+                timer.className = "text-red-600 font-black mt-2 text-sm uppercase tracking-widest";
+            } else if(expiryTime) {
+                timer.innerText = "BERAKHIR PADA: " + new Date(parseInt(expiryTime)).toLocaleString();
+                timer.className = "text-blue-500 font-bold mt-2 text-xs";
+            } else {
+                timer.innerText = "SESI PEMILIHAN TERBUKA (TANPA BATAS WAKTU)";
+                timer.className = "text-green-500 font-bold mt-2 text-[10px]";
+            }
+
+            let total = 0;
+            candidates.forEach(c => {
+                total += c.votes;
+                const card = document.createElement('div');
+                card.className = "border rounded-xl overflow-hidden bg-white shadow-sm flex flex-col";
+                card.innerHTML = `
+                    <div class="h-40 bg-gray-100 flex items-center justify-center">
+                        ${c.photo ? `<img src="${c.photo}" class="w-full h-full object-cover">` : '<span class="text-xs italic text-gray-400">Foto</span>'}
+                    </div>
+                    <div class="p-4 flex-1 flex flex-col justify-between">
+                        <h3 class="font-bold text-center text-sm uppercase mb-3">${c.name}</h3>
+                        <button onclick="vote(${c.id})" class="w-full py-2 rounded font-bold text-sm ${hasVoted || expired ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}">
+                            ${hasVoted ? 'Sudah Memilih' : (expired ? 'Tutup' : 'Pilih')}
+                        </button>
+                    </div>`;
+                grid.appendChild(card);
+            });
+            document.getElementById('totalVotes').innerText = "Total Suara: " + total;
+            
+            // Proteksi tampilan voting jika expired
+            if(expired) {
+                document.getElementById('votingSection').classList.add('opacity-50', 'pointer-events-none');
+            } else if(!hasVoted && activeToken) {
+                document.getElementById('votingSection').classList.remove('opacity-30', 'pointer-events-none');
+                document.getElementById('votingSection').classList.add('opacity-100');
+            }
+
+            if(hasVoted) {
+                showStatus('Terima kasih atas partisipasi Anda.', 'bg-blue-50 text-blue-600 border-blue-100');
+                document.getElementById('tokenInputSection').classList.add('hidden');
+                document.getElementById('votingSection').classList.add('opacity-50', 'pointer-events-none');
+            }
+        }
+
+        function renderAdminView() {
+            const stats = document.getElementById('adminStatsContainer');
+            const list = document.getElementById('adminCandList');
+            const tList = document.getElementById('adminTokenList');
+            stats.innerHTML = ''; list.innerHTML = ''; tList.innerHTML = '';
+
+            let total = 0;
+            candidates.forEach(c => total += c.votes);
+
+            candidates.forEach(c => {
+                const pc = total === 0 ? 0 : Math.round((c.votes/total)*100);
+                stats.innerHTML += `
+                    <div class="text-xs mb-1">
+                        <div class="flex justify-between font-bold"><span>${c.name}</span><span>${pc}% (${c.votes})</span></div>
+                        <div class="bg-gray-200 h-2 rounded-full overflow-hidden mt-1"><div class="bg-blue-600 h-full" style="width:${pc}%"></div></div>
+                    </div>`;
+
+                list.innerHTML += `
+                    <div class="flex items-center justify-between bg-white border p-3 rounded-lg shadow-sm">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-full bg-gray-100 overflow-hidden border">
+                                ${c.photo ? `<img src="${c.photo}" class="w-full h-full object-cover">` : ''}
+                            </div>
+                            <span class="font-bold text-sm">${c.name}</span>
+                        </div>
+                        <div class="flex space-x-1">
+                            <button onclick="editCandidate(${c.id})" class="p-1 px-3 bg-yellow-500 text-white rounded text-[10px] font-bold">EDIT</button>
+                            <button onclick="deleteCandidate(${c.id})" class="p-1 px-3 bg-red-600 text-white rounded text-[10px] font-bold">HAPUS</button>
+                        </div>
+                    </div>`;
+            });
+
+            tokens.forEach(t => {
+                tList.innerHTML += `
+                    <div class="flex justify-between items-center p-2 border-b bg-white">
+                        <div class="flex flex-col">
+                            <span class="${t.used ? 'line-through text-gray-400' : 'font-bold'}">${t.code}</span>
+                            <span class="text-[8px] font-bold uppercase ${t.used ? 'text-red-500' : 'text-green-500'}">${t.used ? 'Terpakai' : 'Aktif'}</span>
+                        </div>
+                        ${!t.used ? `
+                        <button onclick="deleteToken('${t.code}')" class="p-2 text-red-500 hover:bg-red-50 rounded border border-red-100">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </button>` : ''}
+                    </div>`;
+            });
+            if(!tokens.length) tList.innerHTML = '<p class="text-center text-gray-400 py-4 italic">Belum ada token</p>';
+        }
+
+        function checkAdmin() {
+            if(document.getElementById('adminPassword').value === 'admin123') {
+                document.getElementById('admin-login').classList.add('hidden');
+                document.getElementById('admin-panel').classList.remove('hidden');
+                renderAdminView();
+            } else alert('Salah!');
+        }
+
+        function logoutAdmin() {
+            document.getElementById('adminPassword').value = '';
+            document.getElementById('admin-login').classList.remove('hidden');
+            document.getElementById('admin-panel').classList.add('hidden');
+        }
+
+        function showStatus(msg, classes) {
+            const s = document.getElementById('statusMessage');
+            s.innerText = msg;
+            s.className = `mb-6 p-4 rounded-lg text-center font-bold text-sm ${classes}`;
+            s.classList.remove('hidden');
+        }
+
+        window.onload = function() {
+            updateUI();
+            // Periksa secara berkala (setiap menit) untuk status kadaluarsa
+            setInterval(updateUI, 60000);
+        };
     </script>
 </body>
 </html>
